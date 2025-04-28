@@ -436,7 +436,7 @@ export default {
           throw new Error('No active character found')
         }
         
-        const response = await api.get(`/game/api/plateau/play/${characterResponse.data.id}`)
+        const response = await characterService.playPlateauGame(characterResponse.data.id)
         gameResult.value = response.data
         showNotification('Partie terminée!', 'success')
       } catch (error) {

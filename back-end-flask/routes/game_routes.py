@@ -7,6 +7,8 @@ from models.game import Character, Item, Mage, Monster, Race, Warrior, Tableau
 game_bp = Blueprint('game', __name__)
 
 import json
+import time
+import random
 
 
 @game_bp.route('/create_character', methods=['GET', 'POST'])
@@ -201,70 +203,6 @@ def fight():
     return render_template("game/fight_result.html", result=result)
 
 
-@game_bp.route('/board_game')
-@login_required
-def board_game():
-    if not current_user.active_character_id:
-        flash('Veuillez d\'abord créer ou sélectionner un personnage.', 'warning')
-        return redirect(url_for('game.create_character'))
-
-    # Get the active character
-    hero = Character.get_by_id(current_user.active_character_id)
-
-    # Create the Tableau game instance
-    tableau_game = Tableau(hero)
-
-    # Play the entire game and get the result
-    game_result = play_game(tableau_game)
-
-    # You might want to save game results or update character stats here
-    if tableau_game.is_completed:
-        hero.level =+ 1  # Assuming you have a method to add XP
-    elif tableau_game.is_game_over:
-        flash('Votre personnage est mort durant le jeu.', 'danger')
-
-    # JSON for dynamic styling
-    style_data = {
-        "background_color": "#282c34",
-        "header_color": "#61dafb",
-        "button_color": "#ff5733",
-        "text_color": "#ffffff",
-        "font_family": "Arial, sans-serif",
-        "font_size": "16px",
-        "board_border": "2px solid #61dafb",
-        "game_title_font_size": "2rem"
-    }
-
-    return render_template('game/board_game.html',
-                           character=hero,
-                           game_result=game_result,
-                           tableau_game=tableau_game,
-                           style_data=style_data)
-
-
-
-
-def play_game(Tableau):
-    """
-    Play the entire tableau game
-    """
-    output = f"Starting Tableau Game with {Tableau.hero.name}\n"
-
-    while Tableau.current_position < Tableau.length:
-        turn_output = Tableau.play_turn()
-        output += turn_output
-
-        # Check if hero died during the game
-        if Tableau.hero.health <= 0:
-            output += f"{Tableau.hero.name} died. Game Over!\n"
-            break
-
-    if Tableau.current_position >= Tableau.length:
-        output += f"{Tableau.hero.name} completed the tableau and gained experience!\n"
-
-    return output
-
-
 @game_bp.route('/character_profile')
 @login_required
 def character_profile():
@@ -382,3 +320,603 @@ def fight_logic(player1, player2):
     player2.health = original_player2_health
 
     return json.dumps(fight_data, indent=4)
+
+
+@game_bp.route('/api/characters', methods=['GET'])
+@login_required
+def api_characters():
+    characters = Character.get_all_by_user(current_user.id)
+    return jsonify({
+        'characters': [{
+            'id': char.id,
+            'name': char.name,
+            'race': char.race.name,
+            'class': char.type,
+            'health': char.health,
+            'attack': char.attack,
+            'defense': char.defense,
+            'level': char.level,
+            'is_active': char.id == current_user.active_character_id
+        } for char in characters]
+    })
+
+@game_bp.route('/api/characters/<int:character_id>/select', methods=['POST'])
+@login_required
+def api_select_character(character_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Verify the character belongs to the user
+    cursor.execute('''
+        SELECT * FROM characters 
+        WHERE id = ? AND user_id = ?
+    ''', (character_id, current_user.id))
+
+    if not cursor.fetchone():
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Character not found or not owned by user'}), 404
+
+    # Update the active character
+    cursor.execute('''
+        UPDATE user 
+        SET active_character_id = ? 
+        WHERE user_id = ?
+    ''', (character_id, current_user.id))
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({'message': 'Character selected successfully'})
+
+@game_bp.route('/api/inventory', methods=['GET'])
+@game_bp.route('/api/inventory/<int:character_id>', methods=['GET'])
+@login_required
+def api_inventory(character_id=None):
+    # If no character_id is provided, use the active character
+    if character_id is None:
+        if not current_user.active_character_id:
+            return jsonify({'error': 'No active character selected'}), 400
+        character_id = current_user.active_character_id
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Verify the character belongs to the user
+    cursor.execute('''
+        SELECT * FROM characters 
+        WHERE id = ? AND user_id = ?
+    ''', (character_id, current_user.id))
+
+    if not cursor.fetchone():
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Character not found or not owned by user'}), 404
+
+    # Get character info
+    cursor.execute('SELECT name FROM characters WHERE id = ?', (character_id,))
+    character = cursor.fetchone()
+
+    # Get inventory items
+    query = '''
+        SELECT inventory.id AS item_id, inventory.name AS item_name, 
+               item_types.type_name AS item_type, inventory.quantity AS item_quantity 
+        FROM inventory 
+        JOIN item_types ON inventory.type_id = item_types.id 
+        WHERE inventory.character_id = ?
+    '''
+    cursor.execute(query, (character_id,))
+    items = cursor.fetchall()
+    
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        'character_name': character['name'],
+        'character_id': character_id,
+        'items': [{
+            'id': item['item_id'],
+            'name': item['item_name'],
+            'type': item['item_type'],
+            'quantity': item['item_quantity']
+        } for item in items]
+    })
+
+@game_bp.route('/api/item-types', methods=['GET'])
+@login_required
+def api_item_types():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM item_types')
+    item_types = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    
+    return jsonify({
+        'item_types': [{
+            'id': item_type['id'],
+            'name': item_type['type_name']
+        } for item_type in item_types]
+    })
+
+@game_bp.route('/api/inventory/add', methods=['POST'])
+@login_required
+def api_add_item():
+    # Get data from request
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    # Extract required fields
+    character_id = data.get('character_id')
+    name = data.get('name')
+    type_id = data.get('type_id')
+    quantity = data.get('quantity', 1)  # Default to 1 if not specified
+    
+    # Validate required fields
+    if not all([character_id, name, type_id]):
+        return jsonify({'error': 'Missing required fields: character_id, name, type_id'}), 400
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Verify the character belongs to the user
+    cursor.execute('''
+        SELECT * FROM characters 
+        WHERE id = ? AND user_id = ?
+    ''', (character_id, current_user.id))
+    
+    if not cursor.fetchone():
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Character not found or not owned by user'}), 404
+    
+    # Verify the item type exists
+    cursor.execute('SELECT * FROM item_types WHERE id = ?', (type_id,))
+    if not cursor.fetchone():
+        cursor.close()
+        conn.close()
+        return jsonify({'error': 'Invalid item type'}), 400
+    
+    # Add the item to inventory
+    cursor.execute('''
+        INSERT INTO inventory (character_id, name, type_id, quantity) 
+        VALUES (?, ?, ?, ?)
+    ''', (character_id, name, type_id, quantity))
+    
+    item_id = cursor.lastrowid
+    
+    # Get the item type name for the response
+    cursor.execute('SELECT type_name FROM item_types WHERE id = ?', (type_id,))
+    item_type = cursor.fetchone()
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+    
+    return jsonify({
+        'message': 'Item added successfully',
+        'item': {
+            'id': item_id,
+            'name': name,
+            'type': item_type['type_name'],
+            'quantity': quantity
+        }
+    }), 201
+
+@game_bp.route('/api/quests', methods=['GET'])
+@login_required
+def api_quests():
+    """Get all available quests"""
+    quests = [
+        {
+            "id": 1,
+            "name": "La Forêt Sombre",
+            "description": "Defeat the forest monster",
+            "difficulty": "easy",
+            "recommended_level": 1,
+            "reward": "Forest Crystal"
+        },
+        {
+            "id": 2,
+            "name": "Les Grottes Mystérieuses",
+            "description": "Defeat the cave troll",
+            "difficulty": "medium",
+            "recommended_level": 2,
+            "reward": "Troll Hide"
+        },
+        {
+            "id": 3,
+            "name": "Le Donjon du Dragon",
+            "description": "Defeat the dragon",
+            "difficulty": "hard",
+            "recommended_level": 3,
+            "reward": "Dragon Scale"
+        }
+    ]
+    
+    return jsonify({
+        'quests': quests
+    })
+
+@game_bp.route('/api/quests/<int:quest_id>/start', methods=['POST'])
+@login_required
+def api_start_quest(quest_id):
+    """Start a quest with the active character"""
+    if not current_user.active_character_id:
+        return jsonify({'error': 'No active character selected'}), 400
+    
+    character = Character.get_by_id(current_user.active_character_id)
+    if not character:
+        return jsonify({'error': 'Character not found'}), 404
+    
+    # Get the opponent for the quest
+    opponent = get_opponent_for_quest(quest_id)
+    if not opponent:
+        return jsonify({'error': 'Quest not found'}), 404
+    
+    # Simulate the battle
+    result_json = fight_hero_vs_monster(character, opponent)
+    result = json.loads(result_json)
+    
+    # Add battle log for API response
+    battle_log = []
+    for round_data in result['rounds']:
+        if 'damage_to_monster' in round_data:
+            battle_log.append(f"{character.name} attacks {opponent.name} for {round_data['damage_to_monster']} damage")
+        if 'damage_to_hero' in round_data:
+            battle_log.append(f"{opponent.name} attacks {character.name} for {round_data['damage_to_hero']} damage")
+    
+    # Get quest reward based on quest ID
+    rewards = {
+        1: {"experience": 50, "items": [{"name": "Forest Crystal", "type": "clé", "quantity": 1}]},
+        2: {"experience": 100, "items": [{"name": "Troll Hide", "type": "armure", "quantity": 1}]},
+        3: {"experience": 200, "items": [{"name": "Dragon Scale", "type": "armure", "quantity": 1}]}
+    }
+    
+    # Check if the character won (has more than 0 health at the end)
+    character_won = character.health > 0
+    
+    if character_won:
+        battle_log.append(f"{opponent.name} is defeated!")
+        
+        # Add rewards to character
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Add experience (update level if needed)
+        cursor.execute('''
+            UPDATE characters 
+            SET level = level + 1 
+            WHERE id = ? AND level < 10
+        ''', (character.id,))
+        
+        # Add items to inventory
+        for item in rewards.get(quest_id, {"items": []})["items"]:
+            # Get the item type ID
+            cursor.execute('SELECT id FROM item_types WHERE type_name = ?', (item["type"],))
+            type_result = cursor.fetchone()
+            if type_result:
+                type_id = type_result['id']
+                # Add item to inventory
+                cursor.execute('''
+                    INSERT INTO inventory (character_id, name, type_id, quantity)
+                    VALUES (?, ?, ?, ?)
+                ''', (character.id, item["name"], type_id, item["quantity"]))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+    else:
+        battle_log.append(f"{character.name} is defeated!")
+    
+    return jsonify({
+        'won': character_won,
+        'battle_log': battle_log,
+        'rewards': rewards.get(quest_id, {"experience": 0, "items": []}) if character_won else {"experience": 0, "items": []}
+    })
+
+@game_bp.route('/api/plateau/play/<int:character_id>', methods=['GET'])
+@login_required
+def api_play_plateau(character_id):
+    """Play a complete plateau game with a specific character and return the result as JSON"""
+    # Get the character
+    character = Character.get_by_id(character_id)
+    if not character:
+        return jsonify({'error': 'Character not found'}), 404
+    
+    # Create the Tableau game instance
+    tableau_game = Tableau(character)
+    
+    # Play the entire game and get the result
+    game_result = tableau_game.play_game()
+    
+    # Parse the game result into structured data
+    turns = []
+    current_turn = None
+    
+    for line in game_result.split('\n'):
+        if line.startswith(character.name + ' rolls'):
+            if current_turn:
+                turns.append(current_turn)
+            current_turn = {
+                'dice_roll': int(line.split(' ')[-1]),
+                'events': []
+            }
+        elif line.startswith(character.name + ' moves'):
+            current_turn['position'] = int(line.split(' ')[-1])
+        elif line.startswith(character.name + ' found an item'):
+            current_turn['events'].append({
+                'type': 'item',
+                'item': line.split(': ')[-1]
+            })
+        elif line.startswith('Enemy encountered'):
+            current_turn['events'].append({
+                'type': 'enemy',
+                'enemy': line.split(': ')[-1]
+            })
+        elif line.startswith('Battle with'):
+            # This is handled by the battle_data in the previous event
+            pass
+        elif line.startswith('Nothing happened'):
+            current_turn['events'].append({
+                'type': 'empty'
+            })
+        elif 'VICTORY!' in line:
+            current_turn['events'].append({
+                'type': 'victory',
+                'message': line
+            })
+    
+    if current_turn:
+        turns.append(current_turn)
+    
+    # Prepare the response
+    response = {
+        'character': {
+            'id': character.id,
+            'name': character.name,
+            'health': character.health,
+            'attack': character.attack,
+            'defense': character.defense,
+            'level': character.level
+        },
+        'turns': turns,
+        'completed': tableau_game.is_completed,
+        'game_over': tableau_game.is_game_over,
+        'final_position': tableau_game.current_position
+    }
+    
+    # Update character level if completed
+    if tableau_game.is_completed:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE characters 
+            SET level = level + 1 
+            WHERE id = ? AND level < 10
+        ''', (character.id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+    
+    return jsonify(response)
+
+@game_bp.route('/api/characters/<int:character_id>', methods=['GET'])
+@login_required
+def api_character_profile(character_id):
+    """Get a specific character's profile data"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Verify the character belongs to the user
+    cursor.execute('''
+        SELECT * FROM characters 
+        WHERE id = ? AND user_id = ?
+    ''', (character_id, current_user.id))
+    
+    character_data = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    
+    if not character_data:
+        return jsonify({'error': 'Character not found or not owned by user'}), 404
+    
+    # Create a Character object
+    character = Character(
+        id=character_data['id'],
+        name=character_data['name'],
+        race=Race[character_data['race']],
+        character_type=character_data['class'],
+        health=character_data['health'],
+        attack=character_data['attack'],
+        defense=character_data['defense'],
+        level=character_data['level']
+    )
+    
+    return jsonify({
+        'character': {
+            'id': character.id,
+            'name': character.name,
+            'race': character.race.name,
+            'class': character.type,
+            'health': character.health,
+            'attack': character.attack,
+            'defense': character.defense,
+            'level': character.level,
+            'is_active': character.id == current_user.active_character_id
+        }
+    })
+
+@game_bp.route('/api/battle', methods=['POST'])
+@login_required
+def api_battle():
+    """Start a battle between two characters"""
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    player1_id = data.get('player1_id')
+    player2_id = data.get('player2_id')
+    
+    if not player1_id or not player2_id:
+        return jsonify({'error': 'Missing player IDs'}), 400
+    
+    # Get both characters
+    player1 = Character.get_by_id(player1_id)
+    player2 = Character.get_by_id(player2_id)
+    
+    if not player1 or not player2:
+        return jsonify({'error': 'One or both characters not found'}), 404
+    
+    # Run the fight logic
+    result_json = fight_logic(player1, player2)
+    result = json.loads(result_json)
+    
+    # Add battle log for API response
+    battle_log = []
+    for round_data in result['rounds']:
+        if 'damage_to_player2' in round_data:
+            battle_log.append(f"{player1.name} attacks {player2.name} for {round_data['damage_to_player2']} damage")
+        if 'damage_to_player1' in round_data:
+            battle_log.append(f"{player2.name} attacks {player1.name} for {round_data['damage_to_player1']} damage")
+    
+    # Add final battle result
+    if result.get('winner'):
+        battle_log.append(f"{result['winner']} is victorious!")
+    
+    return jsonify({
+        'won': result.get('winner') == player1.name,
+        'battle_log': battle_log,
+        'players': {
+            'player1': {
+                'name': player1.name,
+                'health': player1.health,
+                'attack': player1.attack,
+                'defense': player1.defense
+            },
+            'player2': {
+                'name': player2.name,
+                'health': player2.health,
+                'attack': player2.attack,
+                'defense': player2.defense
+            }
+        }
+    })
+
+@game_bp.route('/api/characters/battle', methods=['GET'])
+@login_required
+def api_battle_characters():
+    """Get all characters available for battle"""
+    characters = Character.get_all_by_user(current_user.id)
+    return jsonify({
+        'characters': [{
+            'id': char.id,
+            'name': char.name,
+            'race': char.race.name,
+            'class': char.type,
+            'health': char.health,
+            'attack': char.attack,
+            'defense': char.defense,
+            'level': char.level
+        } for char in characters]
+    })
+
+@game_bp.route('/api/characters/active', methods=['GET'])
+@login_required
+def api_active_character():
+    if not current_user.active_character_id:
+        return jsonify({"error": "No active character selected"}), 404
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT * FROM characters 
+        WHERE id = ? AND user_id = ?
+    ''', (current_user.active_character_id, current_user.id))
+    
+    character = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    
+    if not character:
+        return jsonify({"error": "Active character not found"}), 404
+        
+    return jsonify({
+        "id": character[0],
+        "name": character[1],
+        "race": character[2],
+        "class": character[3],
+        "health": character[4],
+        "attack": character[5],
+        "defense": character[6]
+    })
+
+@game_bp.route('/api/characters', methods=['POST'])
+@login_required
+def api_create_character():
+    """Create a new character via API"""
+    data = request.json
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+    
+    name = data.get('name')
+    race = data.get('race')
+    character_class = data.get('class')
+    
+    if not all([name, race, character_class]):
+        return jsonify({'error': 'Missing required fields: name, race, class'}), 400
+    
+    try:
+        # Create the character instance
+        if character_class == 'warrior':
+            character = Warrior(name=name, race=Race[race.upper()])
+        elif character_class == 'mage':
+            character = Mage(name=name, race=Race[race.upper()])
+        else:
+            return jsonify({'error': 'Invalid character class'}), 400
+        
+        # Save to database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO characters (name, race, class, health, attack, defense, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (character.name, character.race.name, character.type,
+              character.health, character.attack, character.defense,
+              current_user.id))
+        
+        character_id = cursor.lastrowid
+        character.id = character_id
+        
+        # Update user's active character
+        cursor.execute('''
+            UPDATE user 
+            SET active_character_id = ? 
+            WHERE user_id = ?
+        ''', (character_id, current_user.id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'message': 'Character created successfully',
+            'character': {
+                'id': character.id,
+                'name': character.name,
+                'race': character.race.name,
+                'class': character.type,
+                'health': character.health,
+                'attack': character.attack,
+                'defense': character.defense,
+                'level': character.level
+            }
+        }), 201
+        
+    except KeyError:
+        return jsonify({'error': 'Invalid race value'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

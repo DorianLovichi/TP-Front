@@ -172,17 +172,9 @@ export const characterService = {
         return api.post(`/game/api/quests/${questId}/start`)
     },
     // Plateau mode endpoints
-    startPlateauGame: () => {
-        console.log('Starting plateau game...')
-        return api.post('/game/api/plateau/start')
-    },
-    makePlateauMove: (gameId, move) => {
-        console.log('Making move in plateau game:', gameId)
-        return api.post(`/game/api/plateau/${gameId}/move`, { move })
-    },
-    checkPlateauStatus: (gameId) => {
-        console.log('Getting plateau game status:', gameId)
-        return api.get(`/game/api/plateau/${gameId}`)
+    playPlateauGame: (characterId) => {
+        console.log('Playing plateau game with character:', characterId)
+        return api.get(`/game/api/plateau/play/${characterId}`)
     },
     startBattle: (data) => {
         console.log('Starting battle with data:', data)

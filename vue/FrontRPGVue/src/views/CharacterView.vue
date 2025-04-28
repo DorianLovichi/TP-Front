@@ -72,14 +72,14 @@
             >
               Mode Combat
             </router-link>
+            <button 
+              @click="deleteCharacter(character.id)" 
+              class="btn btn-danger"
+              :disabled="loading"
+            >
+              Supprimer
+            </button>
           </div>
-          <button 
-            @click="deleteCharacter(character.id)" 
-            class="btn btn-danger"
-            :disabled="loading"
-          >
-            Supprimer
-          </button>
         </div>
       </div>
     </div>
