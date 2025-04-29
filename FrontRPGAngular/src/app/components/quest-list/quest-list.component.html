@@ -1,0 +1,28 @@
+<div class="quest-container">
+  <h1>Available Quests</h1>
+  
+  <div *ngIf="loading" class="loading">
+    Loading quests...
+  </div>
+
+  <div *ngIf="error" class="error">
+    {{ error }}
+  </div>
+
+  <div class="quest-grid">
+    <div *ngFor="let quest of quests" class="quest-card">
+      <h2>{{ quest.name }}</h2>
+      <p class="description">{{ quest.description }}</p>
+      <div class="quest-details">
+        <span class="difficulty" [ngClass]="quest.difficulty">
+          {{ quest.difficulty | titlecase }}
+        </span>
+        <span class="level">Level {{ quest.recommended_level }}+</span>
+      </div>
+      <div class="reward">
+        <span class="reward-label">Reward:</span>
+        <span class="reward-value">{{ quest.reward }}</span>
+      </div>
+    </div>
+  </div>
+</div> 

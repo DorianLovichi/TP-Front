@@ -1,0 +1,38 @@
+<div class="battle-result-container" *ngIf="battleResult">
+  <h2>Battle Results</h2>
+
+  <div class="players-container">
+    <div class="player-card">
+      <h3>{{ battleResult.players.player1.name }}</h3>
+      <div class="stats">
+        <p>Health: {{ battleResult.players.player1.health }}</p>
+        <p>Attack: {{ battleResult.players.player1.attack }}</p>
+        <p>Defense: {{ battleResult.players.player1.defense }}</p>
+      </div>
+    </div>
+
+    <div class="player-card">
+      <h3>{{ battleResult.players.player2.name }}</h3>
+      <div class="stats">
+        <p>Health: {{ battleResult.players.player2.health }}</p>
+        <p>Attack: {{ battleResult.players.player2.attack }}</p>
+        <p>Defense: {{ battleResult.players.player2.defense }}</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="battle-log">
+    <h3>Battle Log</h3>
+    <div class="log-entries">
+      <p *ngFor="let entry of battleResult.battle_log" class="log-entry">
+        {{ entry }}
+      </p>
+    </div>
+  </div>
+
+  <div class="result-message" [ngClass]="{'victory': battleResult.won, 'defeat': !battleResult.won}">
+    {{ battleResult.won ? battleResult.players.player1.name + ' wins!' : battleResult.players.player2.name + ' wins!' }}
+  </div>
+
+  <button class="back-btn" (click)="goBack()">Back to Battle Selection</button>
+</div> 

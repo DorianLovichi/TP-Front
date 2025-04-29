@@ -1,0 +1,41 @@
+<div class="battle-selection-container">
+  <h2>Select Characters for Battle</h2>
+
+  <div class="error-message" *ngIf="error">
+    {{ error }}
+  </div>
+
+  <div class="loading-spinner" *ngIf="loading">
+    Loading...
+  </div>
+
+  <div class="character-selection" *ngIf="!loading">
+    <div class="player-selection">
+      <h3>Player 1</h3>
+      <select [(ngModel)]="selectedPlayer1" (change)="error = ''">
+        <option [ngValue]="null">Select a character</option>
+        <option *ngFor="let char of characters" [ngValue]="char">
+          {{ char.name }}
+        </option>
+      </select>
+    </div>
+
+    <div class="vs-text">VS</div>
+
+    <div class="player-selection">
+      <h3>Player 2</h3>
+      <select [(ngModel)]="selectedPlayer2" (change)="error = ''">
+        <option [ngValue]="null">Select a character</option>
+        <option *ngFor="let char of characters" [ngValue]="char">
+          {{ char.name }}
+        </option>
+      </select>
+    </div>
+  </div>
+
+  <button class="start-battle-btn" 
+          (click)="startBattle()" 
+          [disabled]="loading || !selectedPlayer1 || !selectedPlayer2">
+    Start Battle
+  </button>
+</div> 
