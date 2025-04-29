@@ -21,12 +21,12 @@ app = Flask(__name__)
 # Enable CORS for all origins in development with credentials support
 CORS(app, 
      resources={r"/*": {
-         "origins": "*",  # Allow all origins
+         "origins": ["http://localhost:5173", "http://localhost:4200"],  # Both development servers
          "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
          "allow_headers": ["Content-Type", "Authorization"],
          "supports_credentials": True
      }})
-
+     
 # Charger la clé secrète depuis le fichier .env pour sécuriser les sessions
 app.secret_key = os.getenv('SECRET_KEY')
 
@@ -84,6 +84,8 @@ def login():
                 user_data['active_character_id']
             )
             login_user(user)
+            print("User logged in. Session ID:", session.sid)
+            print("User ID in session:", session.get('_user_id'))
             return jsonify({"message": "Login successful"}), 200  # Successful login
         else:
             return jsonify({"message": "Invalid email or password"}), 401  # Failed login

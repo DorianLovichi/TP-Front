@@ -920,3 +920,35 @@ def api_create_character():
         return jsonify({'error': 'Invalid race value'}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@game_bp.route('/api/character-options', methods=['GET'])
+@login_required
+def api_character_options():
+    """Get available races and classes for character creation"""
+    return jsonify({
+        'races': [
+            {'value': 'HUMAN', 'label': 'Humain'},
+            {'value': 'VAMPIRE', 'label': 'Vampire'},
+            {'value': 'WEREWOLF', 'label': 'Loup-Garou'}
+        ],
+        'classes': [
+            {
+                'value': 'warrior',
+                'label': 'Guerrier',
+                'stats': {
+                    'health': 100,
+                    'attack': 15,
+                    'defense': 10
+                }
+            },
+            {
+                'value': 'mage',
+                'label': 'Mage',
+                'stats': {
+                    'health': 80,
+                    'attack': 20,
+                    'defense': 5
+                }
+            }
+        ]
+    })
