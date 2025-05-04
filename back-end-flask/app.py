@@ -18,17 +18,19 @@ load_dotenv()
 # Initialiser l'application Flask
 app = Flask(__name__)
 
-# Enable CORS for all origins in development with credentials support
-CORS(app, 
-     resources={r"/*": {
-         "origins": ["http://localhost:5173", "http://localhost:4200"],  # Both development servers
-         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         "allow_headers": ["Content-Type", "Authorization"],
-         "supports_credentials": True
-     }})
-     
-# Charger la clé secrète depuis le fichier .env pour sécuriser les sessions
-app.secret_key = os.getenv('SECRET_KEY')
+# Configure CORS
+CORS(app, supports_credentials=True, resources={
+    r"/*": {
+        "origins": ["http://localhost:4200"],  # Update this with your Angular app's URL
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"]
+    }
+})
+
+# Configure session
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-here')
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
 
 # Initialiser Bcrypt pour le hachage des mots de passe
 bcrypt = Bcrypt(app)
@@ -66,8 +68,19 @@ def home():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
+        print("Received login request")
+        print("Request data:", request.form)
+        print("Request headers:", request.headers)
+        
+        email = request.form.get('email')
+        password = request.form.get('password')
+        
+        print(f"Email: {email}")
+        print(f"Password received: {password is not None}")  # Don't print actual password
+
+        if not email or not password:
+            print("Missing email or password")
+            return jsonify({"message": "Email and password are required"}), 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -76,70 +89,87 @@ def login():
         cursor.close()
         conn.close()
 
-        if user_data and bcrypt.check_password_hash(user_data['user_password'], password):
-            user = User(
-                user_data['user_id'], 
-                user_data['user_login'], 
-                user_data['user_mail'],
-                user_data['active_character_id']
-            )
-            login_user(user)
-            print("User logged in. Session ID:", session.sid)
-            print("User ID in session:", session.get('_user_id'))
-            return jsonify({"message": "Login successful"}), 200  # Successful login
+        if user_data:
+            print(f"User found: {user_data['user_mail']}")
+            if bcrypt.check_password_hash(user_data['user_password'], password):
+                user = User(
+                    user_data['user_id'], 
+                    user_data['user_login'], 
+                    user_data['user_mail'],
+                    user_data['active_character_id']
+                )
+                login_user(user)
+                print("User ID in session:", session.get('_user_id'))
+                return jsonify({"message": "Login successful"}), 200
+            else:
+                print("Password check failed")
         else:
-            return jsonify({"message": "Invalid email or password"}), 401  # Failed login
+            print("No user found with that email")
 
-    return jsonify({"message": "Method not allowed"}), 405  # Method not allowed for GET requests
+        return jsonify({"message": "Invalid email or password"}), 401
 
-@app.route('/register', methods=['GET', 'POST'])
+    return jsonify({"message": "Method not allowed"}), 405
+
+@app.route('/register', methods=['POST'])
 def register():
-    if request.method == 'POST':
-        email = request.form['email']
-        username = request.form['username']
-        password = request.form['password']
-        recheck_password = request.form['recheck_password']
+    if not request.is_json:
+        return jsonify({"message": "Content-Type must be application/json"}), 400
 
-        if not email or not username or not password or not recheck_password:
-            flash('Tous les champs sont obligatoires !', 'danger')
-            return redirect(url_for('register'))
+    data = request.get_json()
+    email = data.get('email')
+    username = data.get('username')
+    password = data.get('password')
+    recheck_password = data.get('recheck_password')
 
-        if password != recheck_password:
-            flash('Les mots de passe ne correspondent pas !', 'danger')
-            return redirect(url_for('register'))
+    if not all([email, username, password, recheck_password]):
+        return jsonify({"message": "All fields are required"}), 400
 
-        hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+    if password != recheck_password:
+        return jsonify({"message": "Passwords do not match"}), 400
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
+    hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Check if email already exists
         cursor.execute('SELECT * FROM user WHERE user_mail = ?', (email,))
-        account = cursor.fetchone()
+        if cursor.fetchone():
+            return jsonify({"message": "Email already in use"}), 409
 
-        if account:
-            flash('Cet email est déjà utilisé!', 'danger')
-        else:
-            cursor.execute(
-                'INSERT INTO user (user_login, user_password, user_mail) VALUES (?, ?, ?)',
-                (username, hashed_password, email)
-            )
-            conn.commit()
-            user_id = cursor.lastrowid
-            user = User(user_id, username, email)
-            login_user(user)
-            flash('Compte créé avec succès !', 'success')
-            return redirect(url_for('home'))
+        # Insert new user
+        cursor.execute(
+            'INSERT INTO user (user_login, user_password, user_mail) VALUES (?, ?, ?)',
+            (username, hashed_password, email)
+        )
+        conn.commit()
+        user_id = cursor.lastrowid
+        
+        # Create user object and log them in
+        user = User(user_id, username, email)
+        login_user(user)
+        
+        return jsonify({
+            "message": "Registration successful",
+            "user": {
+                "id": user_id,
+                "username": username,
+                "email": email
+            }
+        }), 201
 
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"message": f"Registration failed: {str(e)}"}), 500
+    finally:
         cursor.close()
         conn.close()
-
-    return render_template('register.html')
 
 @app.route('/logout', methods=['POST'])
 @login_required
 def logout():
     logout_user()
-    flash('Vous avez été déconnecté !', 'success')
-    return redirect(url_for('login'))
+    return jsonify({"message": "Logout successful"}), 200
 
 @app.route('/inventory')
 @login_required
@@ -367,6 +397,12 @@ def auth_login():
         return jsonify({"message": "Login successful"}), 200
     else:
         return jsonify({"message": "Invalid email or password"}), 401
+
+@app.route('/check-auth', methods=['GET'])
+def check_auth():
+    if current_user.is_authenticated:
+        return jsonify({"message": "User is authenticated"}), 200
+    return jsonify({"message": "User is not authenticated"}), 401
 
 if __name__ == '__main__':
     app.run(debug=True, port=3000

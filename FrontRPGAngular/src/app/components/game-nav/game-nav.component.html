@@ -1,6 +1,26 @@
 <nav class="game-nav">
-  <button class="quest-button" (click)="navigateToQuests()">
-    <span class="icon">⚔️</span>
-    <span class="text">Quests</span>
-  </button>
+  <div class="nav-buttons">
+    <button class="nav-button" (click)="navigateToCharacters()">
+      <span class="icon">👤</span>
+      <span class="text">Characters</span>
+    </button>
+    <button class="nav-button" (click)="navigateToQuests()">
+      <span class="icon">⚔️</span>
+      <span class="text">Quests</span>
+    </button>
+    <button class="nav-button" (click)="navigateToInventory()">
+      <span class="icon">🎒</span>
+      <span class="text">Inventory</span>
+    </button>
+    <button class="nav-button" (click)="navigateToPvP()">
+      <span class="icon">⚡</span>
+      <span class="text">PvP</span>
+    </button>
+  </div>
+  <div class="user-section">
+    <button class="logout-button" (click)="logout()">
+      <span class="icon">🚪</span>
+      <span class="text">Logout</span>
+    </button>
+  </div>
 </nav> 

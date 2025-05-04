@@ -1,73 +1,41 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { RouterOutlet, Router, NavigationEnd } from '@angular/router';
-import { HeaderComponent } from './components/header/header.component';
-import { AuthService } from './services/auth.service';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router, RouterModule, NavigationEnd } from '@angular/router';
+import { AuthService } from './services/auth.service';
 import { filter } from 'rxjs/operators';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { GameNavComponent } from './components/game-nav/game-nav.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, HeaderComponent, CommonModule],
-  template: `
-    <app-header *ngIf="showHeader"></app-header>
-    <main>
-      <router-outlet></router-outlet>
-    </main>
-  `,
-  styles: [`
-    main {
-      padding-top: 20px;
-    }
-  `]
+  imports: [CommonModule, RouterModule, GameNavComponent],
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.scss']
 })
-export class AppComponent implements OnInit, OnDestroy {
+export class AppComponent implements OnInit {
   title = 'FrontRPGAngular';
-  showHeader = false;
-  private destroy$ = new Subject<void>();
 
   constructor(
     private router: Router,
-    private authService: AuthService
+    public authService: AuthService
   ) {}
 
   ngOnInit() {
-    console.log('App component initialized');
-    
-    // Check if user is logged in
-    this.showHeader = this.authService.isLoggedIn();
-    console.log('Initial login state:', this.showHeader);
-    
-    // Subscribe to login state changes
-    this.authService.isLoggedIn$
-      .pipe(takeUntil(this.destroy$))
-      .subscribe(isLoggedIn => {
-        console.log('Login state changed:', isLoggedIn);
-        this.showHeader = isLoggedIn;
-      });
-    
-    // Check current route and redirect to login if needed
+    // Subscribe to router events
     this.router.events.pipe(
-      filter(event => event instanceof NavigationEnd),
-      takeUntil(this.destroy$)
+      filter(event => event instanceof NavigationEnd)
     ).subscribe((event: any) => {
       const isLoginPage = event.url === '/login';
+      const isRegisterPage = event.url === '/register';
       const isLoggedIn = this.authService.isLoggedIn();
-      
+
       console.log('Navigation event:', event.url, 'isLoginPage:', isLoginPage, 'isLoggedIn:', isLoggedIn);
-      
-      if (!isLoggedIn && !isLoginPage) {
-        // Redirect to login if not logged in and not already on login page
+
+      // If not on login/register page and not logged in, redirect to login
+      if (!isLoginPage && !isRegisterPage && !isLoggedIn) {
         console.log('Redirecting to login page');
         this.router.navigate(['/login']);
       }
     });
-  }
-  
-  ngOnDestroy() {
-    this.destroy$.next();
-    this.destroy$.complete();
   }
 }

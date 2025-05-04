@@ -1,12 +1,21 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpInterceptorFn, HttpRequest, HttpHandlerFn, HttpEvent } from '@angular/common/http';
 import { Observable, BehaviorSubject, of } from 'rxjs';
-import { tap, catchError } from 'rxjs/operators';
+import { tap, catchError, shareReplay, map } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 
 interface LoginResponse {
-  token?: string;
+  message: string;
   [key: string]: any;
+}
+
+interface RegisterResponse {
+  message: string;
+  user?: {
+    id: number;
+    username: string;
+    email: string;
+  };
 }
 
 @Injectable({
@@ -15,22 +24,52 @@ interface LoginResponse {
 export class AuthService {
   private apiUrl = environment.apiUrl;
   private isLoggedInSubject = new BehaviorSubject<boolean>(false);
+  private authCheck$: Observable<boolean>;
   isLoggedIn$ = this.isLoggedInSubject.asObservable();
-  private tokenKey = 'auth_token';
 
   constructor(private http: HttpClient) {
-    this.checkStoredAuth();
+    this.authCheck$ = this.http.get(`${this.apiUrl}/check-auth`, { withCredentials: true }).pipe(
+      tap(() => {
+        this.isLoggedInSubject.next(true);
+        console.log('User is logged in');
+      }),
+      catchError(() => {
+        this.isLoggedInSubject.next(false);
+        console.log('User is logged out');
+        return of(false);
+      }),
+      map(() => this.isLoggedInSubject.value),
+      shareReplay(1)
+    );
+    
+    // Initial check
+    this.authCheck$.subscribe();
   }
 
-  private checkStoredAuth(): void {
-    const token = localStorage.getItem(this.tokenKey);
-    if (token) {
-      this.isLoggedInSubject.next(true);
-      console.log('User is logged in from stored token');
-    } else {
-      this.isLoggedInSubject.next(false);
-      console.log('No stored token found, user is logged out');
-    }
+  checkAuth(): Observable<boolean> {
+    return this.authCheck$;
+  }
+
+  register(userData: { username: string; email: string; password: string; recheck_password: string }): Observable<RegisterResponse> {
+    const headers = new HttpHeaders({
+      'Content-Type': 'application/json'
+    });
+    
+    return this.http.post<RegisterResponse>(`${this.apiUrl}/register`, userData, { 
+      headers,
+      withCredentials: true 
+    }).pipe(
+      tap(response => {
+        if (response.message === 'Registration successful') {
+          this.isLoggedInSubject.next(true);
+        }
+        console.log('Registration response:', response);
+      }),
+      catchError(error => {
+        console.error('Registration error:', error);
+        return of({ message: 'Registration failed' } as RegisterResponse);
+      })
+    );
   }
 
   login(credentials: { email: string; password: string }): Observable<LoginResponse> {
@@ -45,34 +84,37 @@ export class AuthService {
       withCredentials: true 
     }).pipe(
       tap(response => {
-        if (response && response.token) {
-          localStorage.setItem(this.tokenKey, response.token);
-          console.log('Token stored in localStorage');
+        if (response.message === 'Login successful') {
+          this.isLoggedInSubject.next(true);
         } else {
-          localStorage.setItem(this.tokenKey, 'dummy_token');
-          console.log('No token in response, storing dummy token');
+          console.log('Login failed:', response.message);
+          this.isLoggedInSubject.next(false);
         }
-        this.isLoggedInSubject.next(true);
       }),
       catchError(error => {
         console.error('Login error:', error);
-        return of({} as LoginResponse);
+        this.isLoggedInSubject.next(false);
+        return of({ message: 'Login failed' } as LoginResponse);
       })
     );
   }
 
-  logout(): void {
-    localStorage.removeItem(this.tokenKey);
-    this.isLoggedInSubject.next(false);
-    console.log('User logged out, token removed');
+  logout(): Observable<any> {
+    return this.http.post(`${this.apiUrl}/logout`, {}, { withCredentials: true }).pipe(
+      tap(() => {
+        this.isLoggedInSubject.next(false);
+        console.log('User logged out');
+      }),
+      catchError(error => {
+        console.error('Logout error:', error);
+        this.isLoggedInSubject.next(false);
+        return of({ message: 'Logout failed' });
+      })
+    );
   }
 
   isLoggedIn(): boolean {
     return this.isLoggedInSubject.value;
-  }
-
-  getToken(): string | null {
-    return localStorage.getItem(this.tokenKey);
   }
 }
 
@@ -80,15 +122,9 @@ export const authInterceptor: HttpInterceptorFn = (
   req: HttpRequest<unknown>,
   next: HttpHandlerFn
 ): Observable<HttpEvent<unknown>> => {
-  const token = localStorage.getItem('auth_token');
-  
-  if (token) {
-    req = req.clone({
-      setHeaders: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-  }
-  
-  return next(req);
+  // For session-based auth, we just need to ensure withCredentials is true
+  const modifiedReq = req.clone({
+    withCredentials: true
+  });
+  return next(modifiedReq);
 }; 

@@ -75,4 +75,19 @@ button {
     background-color: #ccc;
     cursor: not-allowed;
   }
+}
+
+.register-link {
+  text-align: center;
+  margin-top: 1rem;
+  color: #666;
+
+  a {
+    color: #4a90e2;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
 } 
