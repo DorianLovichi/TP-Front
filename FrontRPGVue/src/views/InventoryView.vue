@@ -85,7 +85,7 @@
               class="form-control"
             >
               <option v-for="type in itemTypes" :key="type.id" :value="type.id">
-                {{ type.name }}
+                {{ type.type_name }}
               </option>
             </select>
           </div>
@@ -116,19 +116,23 @@
 
 <script>
 import { ref, onMounted } from 'vue'
-import { characterService } from '../services/api'
+import { useRouter } from 'vue-router'
+import { characterService, storageService } from '../services/api'
 import { useStore } from 'vuex'
 
 export default {
   name: 'InventoryView',
   setup() {
+    const router = useRouter()
     const store = useStore()
-    const loading = ref(true)
-    const characterName = ref('')
     const items = ref([])
-    const notification = ref(null)
-    const showCreateItemModal = ref(false)
     const itemTypes = ref([])
+    const loading = ref(true)
+    const formLoading = ref(false)
+    const showCreateItemModal = ref(false)
+    const notification = ref(null)
+    const characterName = ref('')
+    const activeCharacterId = ref(null)
     const newItem = ref({
       name: '',
       type_id: '',
@@ -136,56 +140,62 @@ export default {
       character_id: null
     })
 
+    const getActiveCharacter = () => {
+      const storedId = storageService.getItem('activeCharacterId')
+      if (storedId) {
+        activeCharacterId.value = storedId
+        console.log('Active character ID from storage:', activeCharacterId.value)
+        // Get character name from characters list
+        characterService.getCharacters()
+          .then(response => {
+            const character = response.data.characters.find(c => c.id === storedId)
+            if (character) {
+              characterName.value = character.name
+            }
+          })
+      }
+    }
+
+    const fetchInventory = async () => {
+      if (!activeCharacterId.value) {
+        console.log('No active character selected')
+        return
+      }
+
+      loading.value = true
+      try {
+        const response = await characterService.getInventory()
+        console.log('Inventory response:', response)
+        if (response.data) {
+          items.value = response.data.items || []
+        }
+      } catch (error) {
+        console.error('Error fetching inventory:', error)
+        showNotification("Erreur de chargement de l'inventaire", 'danger')
+      } finally {
+        loading.value = false
+      }
+    }
+
+    const fetchItemTypes = async () => {
+      try {
+        const response = await characterService.getItemTypes()
+        console.log('Item types response:', response)
+        if (response.data) {
+          itemTypes.value = response.data || []
+        }
+      } catch (error) {
+        console.error('Error fetching item types:', error)
+        showNotification("Erreur de chargement des types d'items", 'danger')
+      }
+    }
+
     const showNotification = (message, type = 'info') => {
       console.log('Showing notification:', { message, type })
       notification.value = { message, type }
       setTimeout(() => {
         notification.value = null
       }, 3000)
-    }
-
-    const fetchItemTypes = async () => {
-      try {
-        console.log('Fetching item types...')
-        const response = await characterService.getItemTypes()
-        console.log('Item types response:', response)
-        itemTypes.value = response.data.item_types
-        if (itemTypes.value.length > 0) {
-          newItem.value.type_id = itemTypes.value[0].id
-        }
-      } catch (error) {
-        console.error('Error fetching item types:', error)
-        showNotification(
-          `Erreur de chargement des types d'items: ${error.response?.data?.message || error.message}`,
-          'danger'
-        )
-      }
-    }
-
-    const fetchInventory = async () => {
-      loading.value = true
-      try {
-        console.log('Fetching inventory...')
-        const response = await characterService.getInventory()
-        console.log('Inventory response:', response)
-        characterName.value = response.data.character_name
-        items.value = response.data.items
-        newItem.value.character_id = response.data.character_id
-        console.log('Updated inventory:', { characterName: characterName.value, items: items.value })
-      } catch (error) {
-        console.error('Error fetching inventory:', error)
-        console.error('Error details:', {
-          message: error.message,
-          response: error.response?.data,
-          status: error.response?.status
-        })
-        showNotification(
-          `Erreur de chargement de l'inventaire: ${error.response?.data?.message || error.message}`,
-          'danger'
-        )
-      } finally {
-        loading.value = false
-      }
     }
 
     const createItem = async () => {
@@ -238,18 +248,22 @@ export default {
     }
 
     onMounted(() => {
+      getActiveCharacter()
       fetchItemTypes()
       fetchInventory()
     })
 
     return {
-      loading,
-      characterName,
       items,
-      notification,
-      showCreateItemModal,
-      newItem,
       itemTypes,
+      loading,
+      formLoading,
+      showCreateItemModal,
+      notification,
+      characterName,
+      newItem,
+      fetchInventory,
+      fetchItemTypes,
       createItem,
       consumeItem,
       deleteItem

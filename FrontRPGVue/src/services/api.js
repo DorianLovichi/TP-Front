@@ -73,11 +73,11 @@ export const storageService = {
 export const characterService = {
     getCharacters: () => {
         console.log('Fetching characters...')
-        return api.get('/game/api/characters')
+        return api.get('/game/characters')
     },
     getActiveCharacter: () => {
         console.log('Getting active character...')
-        return api.get('/game/api/characters/active')
+        return api.get('/game/characters/active')
             .then(response => {
                 console.log('Active character response:', response)
                 if (response.data) {
@@ -98,30 +98,23 @@ export const characterService = {
     },
     createCharacter: (characterData) => {
         console.log('Creating character with data:', characterData)
-        return api.post('game/api/characters', characterData)
+        const formData = new FormData()
+        formData.append('name', characterData.name)
+        formData.append('race', characterData.race)
+        formData.append('class', characterData.class)
+        return api.post('/game/create_character', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        })
     },
     selectCharacter: (characterId) => {
         console.log('Selecting character:', characterId)
-        return api.post(`/game/api/characters/${characterId}/select`)
+        return api.post(`/game/select_character/${characterId}`)
             .then(response => {
                 console.log('Character selection response:', response.data);
-                // Store the complete character object in localStorage
-                const characterData = {
-                    id: response.data.id,
-                    name: response.data.name,
-                    class: response.data.class,
-                    race: response.data.race,
-                    level: response.data.level,
-                    health: response.data.health,
-                    attack: response.data.attack,
-                    defense: response.data.defense,
-                    is_active: response.data.is_active
-                };
-                console.log('Storing character data:', characterData);
-                storageService.setItem('activeCharacter', characterData);
-                // Verify the storage
-                const savedCharacter = storageService.getItem('activeCharacter');
-                console.log('Saved character in storage:', savedCharacter);
+                // Store the character ID in localStorage
+                storageService.setItem('activeCharacterId', characterId);
                 return response;
             });
     },
@@ -139,15 +132,15 @@ export const characterService = {
     },
     getInventory: () => {
         console.log('Fetching inventory...')
-        return api.get('/game/api/inventory')
+        return api.get('/game/inventory')
     },
     getItemTypes: () => {
         console.log('Fetching item types...')
-        return api.get('/game/api/item-types')
+        return api.get('/game/item-types')
     },
     createItem: (itemData) => {
         console.log('Creating item with data:', itemData)
-        return api.post('/game/api/inventory/add', {
+        return api.post('/game/inventory/add', {
             character_id: itemData.character_id,
             name: itemData.name,
             type_id: itemData.type_id,
@@ -156,11 +149,11 @@ export const characterService = {
     },
     consumeItem: (itemId) => {
         console.log('Consuming item:', itemId)
-        return api.post(`/consume/${itemId}`)
+        return api.post(`/game/inventory/${itemId}/consume`)
     },
     deleteItem: (itemId) => {
         console.log('Deleting item:', itemId)
-        return api.delete(`/delete/${itemId}`)
+        return api.delete(`/game/inventory/${itemId}`)
     },
     // Quest mode endpoints
     getQuests: () => {

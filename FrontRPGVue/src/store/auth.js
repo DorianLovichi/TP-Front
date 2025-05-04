@@ -31,8 +31,12 @@ export default {
         async register({ commit }, userData) {
             try {
                 const response = await authService.register(userData)
-                commit('SET_USER', response)
-                return true
+                console.log('Store register response:', response)
+                if (response === true) {
+                    commit('SET_USER', userData)
+                    return true
+                }
+                return false
             } catch (error) {
                 console.error('Register error:', error)
                 return false

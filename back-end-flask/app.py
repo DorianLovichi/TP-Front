@@ -2,7 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from flask import (Flask, flash, redirect, render_template, request, session,
-                   url_for, jsonify)
+                   url_for)
 from flask_bcrypt import Bcrypt
 from flask_login import (LoginManager, current_user, login_required,
                          login_user, logout_user)
@@ -18,15 +18,16 @@ load_dotenv()
 # Initialiser l'application Flask
 app = Flask(__name__)
 
-# Enable CORS for all origins in development with credentials support
-CORS(app, 
-     resources={r"/*": {
-         "origins": ["http://localhost:5173", "http://localhost:4200"],  # Both development servers
-         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         "allow_headers": ["Content-Type", "Authorization"],
-         "supports_credentials": True
-     }})
-     
+# Configure CORS
+CORS(app, resources={
+    r"/*": {
+        "origins": ["http://localhost:5173"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
+
 # Charger la clé secrète depuis le fichier .env pour sécuriser les sessions
 app.secret_key = os.getenv('SECRET_KEY')
 
@@ -60,14 +61,20 @@ def load_user(user_id):
 @app.route('/')
 def home():
     if current_user.is_authenticated:
-        return redirect(url_for('inventory'))
+        return redirect(url_for('game.inventory'))
     return redirect(url_for('login'))
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/login', methods=['GET', 'POST', 'OPTIONS'])
 def login():
+    if request.method == 'OPTIONS':
+        return '', 200
+        
     if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
+        email = request.form.get('email')
+        password = request.form.get('password')
+
+        if not email or not password:
+            return {'code': 400, 'message': 'Email and password are required'}, 400
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -84,13 +91,11 @@ def login():
                 user_data['active_character_id']
             )
             login_user(user)
-            print("User logged in. Session ID:", session.sid)
-            print("User ID in session:", session.get('_user_id'))
-            return jsonify({"message": "Login successful"}), 200  # Successful login
+            return {'code': 200, 'message': 'Login successful'}, 200
         else:
-            return jsonify({"message": "Invalid email or password"}), 401  # Failed login
+            return {'code': 401, 'message': 'Email ou mot de passe incorrect !'}, 401
 
-    return jsonify({"message": "Method not allowed"}), 405  # Method not allowed for GET requests
+    return {'code': 405, 'message': 'Method not allowed'}, 405
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -145,100 +150,27 @@ def logout():
 @login_required
 def inventory():
     if not current_user.active_character_id:
-        flash('Veuillez d\'abord sélectionner un personnage.', 'warning')
-        return redirect(url_for('game.character_list'))
-
-    sort_by = request.args.get('sort_by', 'item_name')
-    order = request.args.get('order', 'asc')
-
-    valid_columns = {'item_name', 'item_type', 'item_quantity'}
-    valid_order = {'asc', 'desc'}
-    if sort_by not in valid_columns:
-        sort_by = 'item_name'
-    if order not in valid_order:
-        order = 'asc'
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Récupérer les informations du personnage actif
-    cursor.execute('SELECT name FROM characters WHERE id = ?', (current_user.active_character_id,))
-    character = cursor.fetchone()
-
-    query = f'''
-        SELECT inventory.id AS item_id, inventory.name AS item_name, 
-               item_types.type_name AS item_type, inventory.quantity AS item_quantity 
-        FROM inventory 
-        JOIN item_types ON inventory.type_id = item_types.id 
-        WHERE inventory.character_id = ?
-        ORDER BY {sort_by} {order}
-    '''
-    cursor.execute(query, (current_user.active_character_id,))
-    items = cursor.fetchall()
-    cursor.close()
-    conn.close()
-
-    return render_template('inventory.html', 
-                         items=items, 
-                         character_name=character['name'], 
-                         sort_by=sort_by, 
-                         order=order)
+        return redirect(url_for('game.get_characters'))
+    return redirect(url_for('game.inventory'))
 
 @app.route('/add_item', methods=['GET', 'POST'])
 @login_required
 def add_item():
     if not current_user.active_character_id:
-        flash('Veuillez d\'abord sélectionner un personnage.', 'warning')
-        return redirect(url_for('game.character_list'))
+        return redirect(url_for('game.get_characters'))
+    return redirect(url_for('game.inventory'))
 
+@app.route('/delete/<int:item_id>', methods=['POST'])
+def delete_item(item_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM item_types')
-    item_types = cursor.fetchall()
-
-    if request.method == 'POST':
-        name = request.form['name']
-        type_id = request.form['type_id']
-        quantity = request.form['quantity']
-
-        if not name or not type_id or not quantity:
-            flash('Tous les champs sont obligatoires !', 'danger')
-            return redirect(url_for('add_item'))
-
-        cursor.execute('''
-            INSERT INTO inventory (character_id, name, type_id, quantity) 
-            VALUES (?, ?, ?, ?)''',
-            (current_user.active_character_id, name, type_id, quantity))
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-        flash('Objet ajouté avec succès !', 'success')
-        return redirect(url_for('inventory'))
-
+    cursor.execute('DELETE FROM inventory WHERE id = ?', (item_id,))
+    conn.commit()
     cursor.close()
     conn.close()
-    return render_template('edit_item.html', action='Ajouter', item=None, item_types=item_types)
 
-@app.route('/delete/<int:item_id>', methods=['DELETE'])
-def delete_item(item_id):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('DELETE FROM inventory WHERE id = ?', (item_id,))
-        conn.commit()
-        cursor.close()
-        conn.close()
-
-        return jsonify({
-            'success': True,
-            'message': 'Item deleted successfully'
-        }), 200
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error deleting item: {str(e)}'
-        }), 500
+    flash('Objet supprimé avec succès !', 'success')
+    return redirect(url_for('inventory'))
 
 @app.route('/consume/<int:item_id>', methods=['POST'])
 @login_required
@@ -337,36 +269,6 @@ def edit_item(item_id):
     cursor.close()
     conn.close()
     return render_template('edit_item.html', action='Modifier', item=item, item_types=item_types)
-
-@app.route('/auth/login', methods=['OPTIONS', 'POST'])
-def auth_login():
-    if request.method == 'OPTIONS':
-        return '', 200
-        
-    email = request.json.get('email')
-    password = request.json.get('password')
-
-    if not email or not password:
-        return jsonify({"message": "Email and password are required"}), 400
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM user WHERE user_mail = ?', (email,))
-    user_data = cursor.fetchone()
-    cursor.close()
-    conn.close()
-
-    if user_data and bcrypt.check_password_hash(user_data['user_password'], password):
-        user = User(
-            user_data['user_id'], 
-            user_data['user_login'], 
-            user_data['user_mail'],
-            user_data['active_character_id']
-        )
-        login_user(user)
-        return jsonify({"message": "Login successful"}), 200
-    else:
-        return jsonify({"message": "Invalid email or password"}), 401
 
 if __name__ == '__main__':
     app.run(debug=True, port=3000

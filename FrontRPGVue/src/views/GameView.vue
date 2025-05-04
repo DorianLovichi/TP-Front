@@ -348,7 +348,7 @@ export default {
 
     const fetchAvailableCharacters = async () => {
       try {
-        const response = await api.get('/game/api/characters/battle')
+        const response = await api.get('/game/characters')
         availableCharacters.value = response.data.characters
         console.log('Available characters:', availableCharacters.value)
       } catch (error) {

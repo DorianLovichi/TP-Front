@@ -122,7 +122,7 @@ class Monster:
 class Tableau:
     def __init__(self, hero, length=20):
         """
-        Initialize the tableau game
+        Initiali    ze the tableau game
         :param hero: The hero playing the game
         :param length: Length of the tableau (default 20)
         """
@@ -178,16 +178,15 @@ class Tableau:
         dice_roll = random.randint(1, 6)
         output += f"{self.hero.name} rolls {dice_roll}\n"
 
-        # Move hero and cap position at board length
-        new_position = self.current_position + dice_roll
-        self.current_position = min(new_position, self.length)
+        # Move hero
+        self.current_position += dice_roll
         output += f"{self.hero.name} moves to position {self.current_position}\n"
 
-        # Check if hero has reached the end of the board
+        # Check if hero has gone past the board
         if self.current_position >= self.length:
-            output += f"{self.hero.name} has reached the end of the board!\n"
-            output += f"🎉 VICTORY! {self.hero.name} has successfully completed the tableau! 🎉\n"
+            output += f"{self.hero.name} completed the tableau!\n"
             self.is_completed = True
+            # Add XP or other completion logic here
             return output
 
         # Check current board element
@@ -203,7 +202,7 @@ class Tableau:
             output += f"Enemy encountered: {current_element.name}\n"
             # Implement battle logic
             battle_result = self.battle(current_element)
-            output += f"Battle with {current_element.name} completed. Winner: {battle_result['winner']}\n"
+            output += battle_result
 
         # Check if hero died in battle
         if self.hero.health <= 0:
@@ -215,65 +214,33 @@ class Tableau:
     def battle(self, monster):
         """
         Simulate a battle between the hero and a monster
-        Returns a dictionary with detailed battle information
         """
-        battle_data = {
-            "enemy": monster.name,
-            "enemy_health": monster.health,
-            "enemy_attack": monster.attack,
-            "rounds": [],
-            "winner": None
-        }
+        output = f"Battle between {self.hero.name} and {monster.name}\n"
 
         # Simple battle mechanics without defense
         hero_damage = self.hero.attack
         monster_damage = monster.attack
 
-        round_number = 1
         # Round-based battle
         while self.hero.health > 0 and monster.health > 0:
-            round_data = {
-                "round": round_number,
-                "hero_health": self.hero.health,
-                "monster_health": monster.health,
-                "actions": []
-            }
-
             # Hero attacks monster
             monster.health -= hero_damage
-            round_data["actions"].append({
-                "attacker": self.hero.name,
-                "target": monster.name,
-                "damage": hero_damage,
-                "remaining_health": monster.health
-            })
+            output += f"{self.hero.name} deals {hero_damage} damage to {monster.name}\n"
 
             if monster.health <= 0:
-                round_data["winner"] = self.hero.name
-                battle_data["winner"] = self.hero.name
-                battle_data["rounds"].append(round_data)
+                output += f"{monster.name} is defeated!\n"
                 break
 
             # Monster attacks hero
             self.hero.health -= monster_damage
-            round_data["actions"].append({
-                "attacker": monster.name,
-                "target": self.hero.name,
-                "damage": monster_damage,
-                "remaining_health": self.hero.health
-            })
+            output += f"{monster.name} deals {monster_damage} damage to {self.hero.name}\n"
 
             if self.hero.health <= 0:
-                round_data["winner"] = monster.name
-                battle_data["winner"] = monster.name
-                battle_data["rounds"].append(round_data)
+                output += f"{self.hero.name} is defeated!\n"
                 break
 
-            battle_data["rounds"].append(round_data)
-            round_number += 1
-
-        return battle_data
-
+        return output
+    
     def play_game(self):
         """
         Play the entire tableau game
@@ -295,3 +262,4 @@ class Tableau:
             self.current_position = self.length  # Set final position to board length when completed
 
         return output
+

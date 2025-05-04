@@ -58,26 +58,32 @@
               :to="{ name: 'games', query: { mode: 'quest' }}" 
               class="btn btn-secondary game-mode-btn"
             >
-              Mode Quête
+              <i class="fas fa-quest"></i> Mode Quête
             </router-link>
             <router-link 
               :to="{ name: 'games', query: { mode: 'plateau' }}" 
               class="btn btn-secondary game-mode-btn"
             >
-              Mode Plateau
+              <i class="fas fa-chess"></i> Mode Plateau
             </router-link>
             <router-link 
               :to="{ name: 'games', query: { mode: 'battle' }}" 
               class="btn btn-secondary game-mode-btn"
             >
-              Mode Combat
+              <i class="fas fa-swords"></i> Mode Combat
+            </router-link>
+            <router-link 
+              to="/inventory" 
+              class="btn btn-secondary game-mode-btn"
+            >
+              <i class="fas fa-backpack"></i> Inventaire
             </router-link>
             <button 
               @click="deleteCharacter(character.id)" 
               class="btn btn-danger"
               :disabled="loading"
             >
-              Supprimer
+              <i class="fas fa-trash"></i> Supprimer
             </button>
           </div>
         </div>
@@ -148,7 +154,7 @@
 <script>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { characterService } from '../services/api'
+import { characterService, storageService } from '../services/api'
 
 export default {
   name: 'CharacterView',
@@ -159,6 +165,7 @@ export default {
     const formLoading = ref(false)
     const showAddCharacterModal = ref(false)
     const notification = ref(null)
+    const activeCharacterId = ref(null)
 
     const characterForm = ref({
       name: '',
@@ -168,22 +175,29 @@ export default {
       health: 100
     })
 
+    const getActiveCharacterId = () => {
+      const storedId = storageService.getItem('activeCharacterId')
+      if (storedId) {
+        activeCharacterId.value = storedId
+        console.log('Active character ID from storage:', activeCharacterId.value)
+      }
+    }
+
     const fetchCharacters = async () => {
       loading.value = true
       try {
         console.log('Starting to fetch characters...')
         const response = await characterService.getCharacters()
         console.log('Characters response:', response)
-        console.log('Characters data structure:', JSON.stringify(response.data, null, 2))
-        characters.value = response.data.characters
-        console.log('Updated characters array:', characters.value)
+        if (response.data && response.data.characters) {
+          characters.value = response.data.characters.map(char => ({
+            ...char,
+            is_active: char.id === activeCharacterId.value
+          }))
+          console.log('Updated characters array:', characters.value)
+        }
       } catch (error) {
         console.error('Error fetching characters:', error)
-        console.error('Error details:', {
-          message: error.message,
-          response: error.response?.data,
-          status: error.response?.status
-        })
         notification.value = { 
           message: `Erreur de chargement des personnages: ${error.response?.data?.message || error.message}`,
           type: 'danger'
@@ -194,7 +208,6 @@ export default {
     }
 
     const showNotification = (message, type = 'info') => {
-      console.log('Showing notification:', { message, type })
       notification.value = { message, type }
       setTimeout(() => {
         notification.value = null
@@ -206,15 +219,11 @@ export default {
       try {
         const response = await characterService.selectCharacter(characterId)
         console.log('Character selection response:', response)
+        activeCharacterId.value = characterId
         showNotification('Personnage sélectionné', 'success')
         await fetchCharacters() // Refresh the character list to update active status
       } catch (error) {
         console.error('Error selecting character:', error)
-        console.error('Error details:', {
-          message: error.message,
-          response: error.response?.data,
-          status: error.response?.status
-        })
         showNotification('Erreur de sélection du personnage', 'danger')
       }
     }
@@ -284,6 +293,7 @@ export default {
     }
 
     onMounted(() => {
+      getActiveCharacterId()
       fetchCharacters()
     })
 
@@ -337,16 +347,49 @@ export default {
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;
+  transition: all 0.3s ease;
 }
 
 .character-card.active {
   border-color: #28a745;
-  box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.25);
+  box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.25);
+  background-color: #f0fff4;
+  transform: scale(1.02);
+}
+
+.character-card.active::before {
+  content: '✓';
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  background-color: #28a745;
+  color: white;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.character-card.active h3 {
+  color: #28a745;
+  font-weight: bold;
 }
 
 .character-info {
   margin-bottom: 1rem;
   flex-grow: 1;
+  position: relative;
+}
+
+.character-info h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+  transition: color 0.3s ease;
 }
 
 .character-stats {
@@ -378,17 +421,26 @@ export default {
 }
 
 .game-mode-buttons {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.5rem;
   margin: 0.5rem 0;
 }
 
 .game-mode-btn {
-  flex: 1;
-  min-width: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
   font-size: 0.9rem;
-  padding: 0.4rem 0.8rem;
+  text-decoration: none;
+  transition: all 0.3s ease;
+}
+
+.game-mode-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .btn {
@@ -414,11 +466,23 @@ export default {
 .btn-secondary {
   background-color: #6c757d;
   color: white;
+  border: none;
+}
+
+.btn-secondary:hover {
+  background-color: #5a6268;
+  color: white;
 }
 
 .btn-danger {
+  grid-column: span 2;
+  margin-top: 0.5rem;
+}
+
+.btn-danger:hover {
   background-color: #dc3545;
-  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .btn:disabled {
@@ -512,7 +576,7 @@ export default {
   padding: 2rem;
 }
 
-.btn-secondary:hover {
-  background-color: #5a6268;
+.btn i {
+  font-size: 1rem;
 }
 </style>
