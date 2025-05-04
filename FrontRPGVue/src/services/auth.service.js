@@ -23,6 +23,7 @@ export const authService = {
         if (sessionCookie) {
           localStorage.setItem('session', sessionCookie.split('=')[1])
         }
+
       }
       return response.data
     } catch (error) {
@@ -38,13 +39,26 @@ export const authService = {
       formData.append('password', userData.password)
       formData.append('recheck_password', userData.password)
       
+      console.log('Sending registration request with:', userData)
       const response = await api.post('/register', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       })
-      return response.data
+      console.log('Registration response:', response)
+
+      // If we get a 200, return true to indicate success
+      if (response.status === 200) {
+        return true
+      }
+
+      return false
     } catch (error) {
+      console.error('Registration error:', error)
+      if (error.response) {
+        console.error('Error response:', error.response)
+        throw error.response.data || error
+      }
       throw error
     }
   },
@@ -80,3 +94,4 @@ export const authService = {
     }
   }
 }
+

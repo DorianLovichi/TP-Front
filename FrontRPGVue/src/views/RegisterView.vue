@@ -106,6 +106,7 @@ export default {
       loading.value = true
 
       try {
+        console.log('Attempting registration with:', form.value)
         const success = await store.dispatch('auth/register', {
           email: form.value.email,
           username: form.value.username,
@@ -113,14 +114,22 @@ export default {
           recheck_password: form.value.recheck_password
         })
 
-        if (success) {
+        console.log('Registration response:', success)
+        if (success === true) {
+          // Registration successful, redirect to inventory
           router.push('/inventory')
         } else {
           error.value = 'Une erreur est survenue lors de l\'inscription'
         }
       } catch (err) {
-        error.value = 'Une erreur est survenue lors de l\'inscription'
-        console.error(err)
+        console.error('Registration error details:', err)
+        if (err.response) {
+          console.error('Response data:', err.response.data)
+          console.error('Response status:', err.response.status)
+          error.value = err.response.data?.message || 'Une erreur est survenue lors de l\'inscription'
+        } else {
+          error.value = 'Une erreur est survenue lors de l\'inscription'
+        }
       } finally {
         loading.value = false
       }
