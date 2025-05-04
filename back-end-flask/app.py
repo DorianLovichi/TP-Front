@@ -2,10 +2,11 @@ import os
 
 from dotenv import load_dotenv
 from flask import (Flask, flash, redirect, render_template, request, session,
-                   url_for)
+                   url_for, jsonify)
 from flask_bcrypt import Bcrypt
 from flask_login import (LoginManager, current_user, login_required,
                          login_user, logout_user)
+from flask_cors import CORS
 
 from init_db import get_db_connection
 from models.user import User
@@ -17,6 +18,15 @@ load_dotenv()
 # Initialiser l'application Flask
 app = Flask(__name__)
 
+# Enable CORS for all origins in development with credentials support
+CORS(app, 
+     resources={r"/*": {
+         "origins": ["http://localhost:5173", "http://localhost:4200"],  # Both development servers
+         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         "allow_headers": ["Content-Type", "Authorization"],
+         "supports_credentials": True
+     }})
+     
 # Charger la clé secrète depuis le fichier .env pour sécuriser les sessions
 app.secret_key = os.getenv('SECRET_KEY')
 
@@ -74,11 +84,13 @@ def login():
                 user_data['active_character_id']
             )
             login_user(user)
-            return redirect(url_for('inventory'))
+            print("User logged in. Session ID:", session.sid)
+            print("User ID in session:", session.get('_user_id'))
+            return jsonify({"message": "Login successful"}), 200  # Successful login
         else:
-            flash('Email ou mot de passe incorrect !', 'danger')
+            return jsonify({"message": "Invalid email or password"}), 401  # Failed login
 
-    return render_template('login.html')
+    return jsonify({"message": "Method not allowed"}), 405  # Method not allowed for GET requests
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -208,17 +220,25 @@ def add_item():
     conn.close()
     return render_template('edit_item.html', action='Ajouter', item=None, item_types=item_types)
 
-@app.route('/delete/<int:item_id>', methods=['POST'])
+@app.route('/delete/<int:item_id>', methods=['DELETE'])
 def delete_item(item_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM inventory WHERE id = ?', (item_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM inventory WHERE id = ?', (item_id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
 
-    flash('Objet supprimé avec succès !', 'success')
-    return redirect(url_for('inventory'))
+        return jsonify({
+            'success': True,
+            'message': 'Item deleted successfully'
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error deleting item: {str(e)}'
+        }), 500
 
 @app.route('/consume/<int:item_id>', methods=['POST'])
 @login_required
@@ -317,6 +337,36 @@ def edit_item(item_id):
     cursor.close()
     conn.close()
     return render_template('edit_item.html', action='Modifier', item=item, item_types=item_types)
+
+@app.route('/auth/login', methods=['OPTIONS', 'POST'])
+def auth_login():
+    if request.method == 'OPTIONS':
+        return '', 200
+        
+    email = request.json.get('email')
+    password = request.json.get('password')
+
+    if not email or not password:
+        return jsonify({"message": "Email and password are required"}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM user WHERE user_mail = ?', (email,))
+    user_data = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    if user_data and bcrypt.check_password_hash(user_data['user_password'], password):
+        user = User(
+            user_data['user_id'], 
+            user_data['user_login'], 
+            user_data['user_mail'],
+            user_data['active_character_id']
+        )
+        login_user(user)
+        return jsonify({"message": "Login successful"}), 200
+    else:
+        return jsonify({"message": "Invalid email or password"}), 401
 
 if __name__ == '__main__':
     app.run(debug=True, port=3000
