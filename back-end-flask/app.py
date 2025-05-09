@@ -106,12 +106,10 @@ def register():
         recheck_password = request.form['recheck_password']
 
         if not email or not username or not password or not recheck_password:
-            flash('Tous les champs sont obligatoires !', 'danger')
-            return redirect(url_for('register'))
+            return {'code': 400, 'message': 'Tous les champs sont obligatoires !'}, 400
 
         if password != recheck_password:
-            flash('Les mots de passe ne correspondent pas !', 'danger')
-            return redirect(url_for('register'))
+            return {'code': 400, 'message': 'Les mots de passe ne correspondent pas !'}, 400
 
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
@@ -121,23 +119,24 @@ def register():
         account = cursor.fetchone()
 
         if account:
-            flash('Cet email est déjà utilisé!', 'danger')
-        else:
-            cursor.execute(
-                'INSERT INTO user (user_login, user_password, user_mail) VALUES (?, ?, ?)',
-                (username, hashed_password, email)
-            )
-            conn.commit()
-            user_id = cursor.lastrowid
-            user = User(user_id, username, email)
-            login_user(user)
-            flash('Compte créé avec succès !', 'success')
-            return redirect(url_for('home'))
-
+            cursor.close()
+            conn.close()
+            return {'code': 409, 'message': 'Cet email est déjà utilisé!'}, 409
+        
+        cursor.execute(
+            'INSERT INTO user (user_login, user_password, user_mail) VALUES (?, ?, ?)',
+            (username, hashed_password, email)
+        )
+        conn.commit()
+        user_id = cursor.lastrowid
+        user = User(user_id, username, email)
+        login_user(user)
         cursor.close()
         conn.close()
+        
+        return {'code': 201, 'message': 'Compte créé avec succès !'}, 201
 
-    return render_template('register.html')
+    return {'code': 405, 'message': 'Method not allowed'}, 405
 
 @app.route('/logout', methods=['POST'])
 @login_required
