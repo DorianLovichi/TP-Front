@@ -152,7 +152,7 @@ export const characterService = {
     },
     deleteItem: (itemId) => {
         console.log('Deleting item:', itemId)
-        return api.delete(`/game/inventory/${itemId}`)
+        return api.post(`/delete/${itemId}`)
     },
     // Quest mode endpoints
     getQuests: () => {

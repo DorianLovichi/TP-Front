@@ -190,16 +190,32 @@ def add_item():
     return redirect(url_for('game.inventory'))
 
 @app.route('/delete/<int:item_id>', methods=['POST'])
+@login_required
 def delete_item(item_id):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM inventory WHERE id = ?', (item_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    if not current_user.active_character_id:
+        return jsonify({'error': 'Aucun personnage actif'}), 400
 
-    flash('Objet supprimé avec succès !', 'success')
-    return redirect(url_for('inventory'))
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Verify the item belongs to the active character
+        cursor.execute('SELECT * FROM inventory WHERE id = ? AND character_id = ?', 
+                      (item_id, current_user.active_character_id))
+        item = cursor.fetchone()
+        
+        if not item:
+            return jsonify({'error': 'Item non trouvé ou n\'appartient pas au personnage actif'}), 404
+
+        cursor.execute('DELETE FROM inventory WHERE id = ?', (item_id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({'message': 'Item supprimé avec succès'}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/consume/<int:item_id>', methods=['POST'])
 @login_required
