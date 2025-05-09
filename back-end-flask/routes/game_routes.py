@@ -429,9 +429,16 @@ def play_game(Tableau):
 @game_bp.route('/character_profile')
 @login_required
 def character_profile():
+    if not current_user.active_character_id:
+        return jsonify({
+            'error': 'No active character selected',
+            'message': 'Aucun personnage actif sélectionné.'
+        }), 400
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM characters WHERE user_id = ? ORDER BY id DESC LIMIT 1', (current_user.id,))
+    cursor.execute('SELECT * FROM characters WHERE id = ? AND user_id = ?', 
+                  (current_user.active_character_id, current_user.id))
     character_data = cursor.fetchone()
     cursor.close()
     conn.close()
@@ -447,10 +454,23 @@ def character_profile():
             defense=character_data['defense'],
             level=character_data['level']
         )
-        return render_template('game/character_profile.html', character=character)
+        return jsonify({
+            'character': {
+                'id': character.id,
+                'name': character.name,
+                'race': character.race.name,
+                'class': character.type,
+                'health': character.health,
+                'attack': character.attack,
+                'defense': character.defense,
+                'level': character.level
+            }
+        }), 200
 
-    flash('Aucun personnage trouvé.', 'warning')
-    return redirect(url_for('game.create_character'))
+    return jsonify({
+        'error': 'Character not found',
+        'message': 'Personnage non trouvé.'
+    }), 404
 
 
 @game_bp.route('/characters')
