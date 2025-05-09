@@ -2,7 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from flask import (Flask, flash, redirect, render_template, request, session,
-                   url_for)
+                   url_for, jsonify)
 from flask_bcrypt import Bcrypt
 from flask_login import (LoginManager, current_user, login_required,
                          login_user, logout_user)
@@ -157,6 +157,36 @@ def inventory():
 def add_item():
     if not current_user.active_character_id:
         return redirect(url_for('game.get_characters'))
+    
+    if request.method == 'POST':
+        try:
+            data = request.get_json()
+            name = data.get('name')
+            type_id = data.get('type_id')
+            quantity = data.get('quantity')
+            character_id = current_user.active_character_id
+
+            if not all([name, type_id, quantity]):
+                return jsonify({'error': 'Tous les champs sont obligatoires'}), 400
+
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Insert the new item
+            cursor.execute('''
+                INSERT INTO inventory (name, type_id, quantity, character_id)
+                VALUES (?, ?, ?, ?)
+            ''', (name, type_id, quantity, character_id))
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            return jsonify({'message': 'Item créé avec succès'}), 201
+
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
     return redirect(url_for('game.inventory'))
 
 @app.route('/delete/<int:item_id>', methods=['POST'])

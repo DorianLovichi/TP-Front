@@ -140,8 +140,7 @@ export const characterService = {
     },
     createItem: (itemData) => {
         console.log('Creating item with data:', itemData)
-        return api.post('/game/inventory/add', {
-            character_id: itemData.character_id,
+        return api.post('/add_item', {
             name: itemData.name,
             type_id: itemData.type_id,
             quantity: itemData.quantity
